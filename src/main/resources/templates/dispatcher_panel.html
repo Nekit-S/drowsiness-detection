@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Dispatcher Panel</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+<div class="container mt-4">
+    <h1>Dispatcher Panel</h1>
+    <h2>Select Driver to View Statistics</h2>
+    <div class="list-group">
+        <a th:each="driver : ${drivers}" 
+           th:href="@{/dispatcher/driver/{driverId}(driverId=${driver.driverId})}" 
+           class="list-group-item list-group-item-action">
+            <span th:text="${driver.driverName}">Driver Name</span> (<span th:text="${driver.driverId}">Driver ID</span>)
+        </a>
+    </div>
+</div>
+</body>
+</html>
