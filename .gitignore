@@ -22,3 +22,27 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# Gradle cache directory
+.gradle/
+
+# Build directory
+build/
+
+# IntelliJ IDEA files
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code files
+.vscode/
+
+# Database files
+/data/
+.gradle/buildOutputCleanup/buildOutputCleanup.lock
+.gradle/8.13/fileHashes/fileHashes.lock
+.gradle/8.13/fileHashes/fileHashes.bin
+.gradle/8.13/executionHistory/executionHistory.lock
+.gradle/8.13/executionHistory/executionHistory.bin
+.gradle/8.13/checksums/checksums.lock

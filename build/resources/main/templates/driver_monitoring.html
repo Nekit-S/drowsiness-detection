@@ -118,6 +118,7 @@
     // Настройки и пороговые значения
     const EAR_THRESHOLD = 0.2;     // Порог для определения закрытого глаза
     const DROWSY_TIME = 2000;      // 2 секунды для определения сонливости
+    const YAW_THRESHOLD_DEGREES = 10; // Порог угла поворота головы для отвлечения (в градусах) // NEW
     const FACE_MESH_CONFIG = {
         maxNumFaces: 1,
         refineLandmarks: true,
@@ -130,6 +131,8 @@
     let currentState = 'NORMAL';
     let faceMesh;
     let camera;
+    let lastDistractionTime = null; // NEW: Track distraction start time
+    const DISTRACTION_DURATION_THRESHOLD = 1000; // NEW: Minimum duration (ms) to log distraction
 
     // Получаем элементы DOM
     const video = document.getElementById('videoElement');
@@ -182,13 +185,25 @@
         // Рисуем изображение с камеры
         ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
+        let faceDetected = false;
+        let isDistractedByPose = false;
+        let yawAngle = 0; // NEW
+
         if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-            // Лицо обнаружено
+            faceDetected = true;
             const landmarks = results.multiFaceLandmarks[0];
 
             // Отрисовываем ключевые точки лица (опционально)
-            // drawConnectors(ctx, landmarks, FACEMESH_TESSELATION,
-            //                {color: '#C0C0C070', lineWidth: 1});
+            // drawConnectors(ctx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 1});
+            // drawConnectors(ctx, landmarks, FACEMESH_LEFT_EYE, {color: '#30FF30'});
+            // drawConnectors(ctx, landmarks, FACEMESH_RIGHT_EYE, {color: '#FF3030'});
+
+            // --- Оценка позы головы --- // NEW
+            yawAngle = calculateHeadPose(landmarks);
+            if (Math.abs(yawAngle) > YAW_THRESHOLD_DEGREES) {
+                isDistractedByPose = true;
+            }
+            // --- Конец оценки позы головы ---
 
             // Рассчитываем EAR для определения сонливости
             const leftEAR = calculateEAR(landmarks, LEFT_EYE_INDICES);
@@ -202,35 +217,101 @@
                     lastEyeCloseTime = Date.now();
                 } else {
                     const closeDuration = Date.now() - lastEyeCloseTime;
-
-                    // Проверяем продолжительность закрытия глаз
                     if (closeDuration > DROWSY_TIME) {
-                        // Водитель сонный, если глаза закрыты больше порогового времени
+                        // Сонливость
                         updateDriverState('DROWSY', closeDuration / 1000, {
                             earValue: avgEAR,
                             closeDuration: closeDuration,
                             leftEAR: leftEAR,
-                            rightEAR: rightEAR
+                            rightEAR: rightEAR,
+                            yawAngle: yawAngle // Include yaw
                         });
+                        lastDistractionTime = null; // Reset distraction timer if drowsy
+                        return; // Exit early, drowsiness takes precedence
                     }
                 }
             } else {
                 // Глаза открыты
                 lastEyeCloseTime = null;
+            }
 
-                // Если предыдущее состояние было не NORMAL, обновляем на NORMAL
-                if (currentState !== 'NORMAL') {
-                    updateDriverState('NORMAL', 0, {});
+            // Если не сонный, проверяем на отвлечение по позе
+            if (isDistractedByPose) {
+                 if (lastDistractionTime === null) {
+                     lastDistractionTime = Date.now();
+                 } else {
+                     const distractionDuration = Date.now() - lastDistractionTime;
+                     if (distractionDuration > DISTRACTION_DURATION_THRESHOLD) {
+                         updateDriverState('DISTRACTED', distractionDuration / 1000, {
+                             faceDetected: true,
+                             yawAngle: yawAngle, // Include yaw angle
+                             timestamp: Date.now()
+                         });
+                     }
+                 }
+            } else {
+                // Не отвлечен по позе и не сонный -> Нормальное состояние
+                lastDistractionTime = null;
+                if (currentState !== 'NORMAL' && lastEyeCloseTime === null) { // Only update if not currently closing eyes
+                     updateDriverState('NORMAL', 0, { yawAngle: yawAngle });
                 }
             }
+
         } else {
-            // Лицо не обнаружено - водитель отвлечен
-            updateDriverState('DISTRACTED', 1.0, {
-                faceDetected: false,
-                timestamp: Date.now()
-            });
+            // Лицо не обнаружено
+            faceDetected = false;
+            lastEyeCloseTime = null; // Reset eye close timer if face is lost
+            if (lastDistractionTime === null) {
+                lastDistractionTime = Date.now();
+            } else {
+                const distractionDuration = Date.now() - lastDistractionTime;
+                if (distractionDuration > DISTRACTION_DURATION_THRESHOLD) {
+                    updateDriverState('DISTRACTED', distractionDuration / 1000, {
+                        faceDetected: false,
+                        timestamp: Date.now()
+                    });
+                }
+            }
         }
     }
+
+
+    // --- НОВАЯ ФУНКЦИЯ: Оценка позы головы (упрощенная) ---
+    function calculateHeadPose(landmarks) {
+        // Используем 3D координаты ключевых точек
+        // Индексы: Кончик носа: 1, Левый край лица: 234, Правый край лица: 454
+        //         Левый глаз (центр): 473, Правый глаз (центр): 468
+        const nose = landmarks[1];
+        const leftEye = landmarks[473] || landmarks[33]; // Fallback if iris not refined
+        const rightEye = landmarks[468] || landmarks[263]; // Fallback if iris not refined
+        const leftFaceEdge = landmarks[234];
+        const rightFaceEdge = landmarks[454];
+
+        if (!nose || !leftEye || !rightEye || !leftFaceEdge || !rightFaceEdge) {
+            console.warn("Недостаточно точек для оценки позы головы.");
+            return 0; // Невозможно рассчитать
+        }
+
+        // --- Метод 3: Использование 2D проекции 3D точек для оценки поворота ---
+        // Используем 3D точки для построения вектора взгляда
+        const faceCenterZ = (leftEye.z + rightEye.z) / 2;
+        const lookVectorX = nose.x - (leftEye.x + rightEye.x) / 2;
+        // Используем Z носа относительно Z глаз как меру глубины взгляда
+        // Чем больше разница Z, тем больше наклон (pitch), но мы используем X для yaw
+        const lookVectorZ = Math.abs(nose.z - faceCenterZ); // Используем абсолютное значение для знаменателя
+
+        // Угол рыскания (yaw) в радианах, используя atan2 для правильного квадранта
+        // atan2(y, x) -> atan2(горизонтальное_смещение_X, глубина_Z)
+        let yawRad = Math.atan2(lookVectorX, lookVectorZ + 0.01); // Добавляем малое значение к Z для избежания деления на ноль
+
+        // Преобразуем радианы в градусы
+        let yaw = yawRad * (180 / Math.PI);
+
+        // console.log(`Yaw Estimate: ${yaw.toFixed(1)} degrees`); // Для отладки
+        return yaw;
+    }
+    // --- Конец новой функции ---
+
 
     // Рассчитывает Eye Aspect Ratio для определения закрытости глаз
     function calculateEAR(landmarks, eyeIndices) {
@@ -248,25 +329,30 @@
         return (height1 + height2) / (2 * width);
     }
 
-    // Евклидово расстояние между двумя точками
+    // Евклидово расстояние между двумя точками (2D)
     function distance(p1, p2) {
-        if (!p1 || !p2) return 0; // Handle cases where landmarks might be missing
-        return Math.sqrt(
-            Math.pow(p2.x - p1.x, 2) +
-            Math.pow(p2.y - p1.y, 2)
-        );
+        if (!p1 || !p2) return 0;
+        return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
     }
 
     // Обновляет состояние водителя и отправляет данные на сервер
     function updateDriverState(state, duration, metadata) {
-        // Обновляем только при изменении состояния
-        if (currentState !== state) {
+        // Обновляем только при изменении состояния ИЛИ если состояние не NORMAL (чтобы логировать продолжительные события)
+        if (currentState !== state || state !== 'NORMAL') {
+            // Для DROWSY и DISTRACTED, обновляем состояние, даже если оно то же,
+            // чтобы отправить обновленную продолжительность и метаданные
+            if (state === 'DROWSY' || state === 'DISTRACTED') {
+                 // Не меняем currentState, если он уже такой же, но отправляем событие
+                 if (currentState === state) {
+                     sendEventToServer(state, duration, metadata);
+                     return; // Не обновляем UI повторно, если состояние не изменилось
+                 }
+            }
+
             currentState = state;
+            updateUI(state); // Обновляем UI при смене состояния
 
-            // Обновляем UI
-            updateUI(state);
-
-            // Если состояние не NORMAL, отправляем событие на сервер
+            // Отправляем событие на сервер (для всех состояний кроме NORMAL)
             if (state !== 'NORMAL') {
                 sendEventToServer(state, duration, metadata);
             }
@@ -275,18 +361,27 @@
 
     // Отправляет событие на сервер для логирования
     function sendEventToServer(state, duration, metadata) {
-        console.log(`Attempting to send event: State=${state}, Duration=${duration}, DriverID=${driverId}, SessionID=${sessionId}`); // Add log
+        // Добавляем источник события и временную метку в метаданные, если их нет
+        const finalMetadata = {
+            source: 'MediaPipe', // Указываем источник
+            faceDetected: metadata.faceDetected !== undefined ? metadata.faceDetected : true, // Значение по умолчанию, если не указано
+            timestamp: metadata.timestamp || Date.now(), // Используем переданное или текущее время
+            ...metadata // Добавляем остальные метаданные
+        };
+
+        // Добавляем sessionId в метаданные (для консистентности с DTO)
+        finalMetadata.sessionId = sessionId;
+        finalMetadata.eventType = state; // Добавляем тип события
+
+        console.log(`Attempting to send event: State=${state}, Duration=${duration.toFixed(3)}, DriverID=${driverId}, SessionID=${sessionId}`);
         const payload = {
             driverId: driverId,
-            sessionId: sessionId, // Send sessionId
+            sessionId: sessionId,
             state: state,
-            duration: duration,
-            metadata: {
-                ...metadata,
-                timestamp: Date.now()
-            }
+            duration: duration, // Отправляем длительность
+            metadata: finalMetadata // Отправляем расширенные метаданные
         };
-        console.log('Payload:', JSON.stringify(payload)); // Add log for payload
+        console.log('Payload:', JSON.stringify(payload));
 
         fetch('/api/detection-event', {
             method: 'POST',
@@ -296,14 +391,16 @@
             body: JSON.stringify(payload)
         })
         .then(response => {
-            console.log(`Server response status: ${response.status}`); // Add log for response status
+            console.log(`Server response status: ${response.status}`);
             if (!response.ok) {
                 console.error('Server returned error:', response.statusText);
+                // Попытка прочитать тело ошибки
+                 response.text().then(text => console.error('Server error body:', text)).catch(() => {});
             }
-            return response.text(); // Read body even if just for logging
+            return response.text();
         })
         .then(text => {
-             console.log('Server response body:', text); // Log response body
+             // console.log('Server response body:', text); // Можно закомментировать для чистоты логов
         })
         .catch(error => console.error('Error sending event:', error));
     }
@@ -342,11 +439,11 @@
         statusIndicator.textContent = 'Status: Normal';
     }
 
-    // Показывает уведомление о отвлечении
+    // --- Важно: Обновим текст уведомления для DISTRACTED --- // MODIFIED
     function showDistractedNotification() {
         notificationArea.innerHTML = `
             <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                <strong>Warning:</strong> Eyes on the road! You appear distracted.
+                <strong>Warning:</strong> Eyes on the road! Face not detected or turned away.
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>`;
 
