@@ -39,6 +39,11 @@ dependencies {
     // Разработка и тестирование
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+	// AI и Computer Vision библиотеки
+	implementation 'org.bytedeco:javacv-platform:1.5.10' // Используем последнюю стабильную версию JavaCV
+
+	// Логирование уже включено через spring-boot-starter
 }
 
 tasks.named('test') {
