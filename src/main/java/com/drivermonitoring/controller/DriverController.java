@@ -5,6 +5,11 @@
 
 package com.drivermonitoring.controller;
 
+import com.drivermonitoring.model.Driver; // Add import
+import com.drivermonitoring.model.DriverSession;
+import com.drivermonitoring.repository.DriverRepository; // Add import
+import com.drivermonitoring.service.SessionService;
+import org.springframework.beans.factory.annotation.Autowired; // Add import
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +20,12 @@ import jakarta.servlet.http.HttpSession;
 @Controller
 public class DriverController {
 
+    @Autowired
+    private SessionService sessionService;
+
+    @Autowired // Inject DriverRepository
+    private DriverRepository driverRepository;
+
     @GetMapping("/driver/login")
     public String driverLogin() {
         // Returns the view name for the driver login page
@@ -24,7 +35,7 @@ public class DriverController {
     @PostMapping("/driver/start")
     public String startMonitoring(@RequestParam String driverName,
                                    @RequestParam String driverId,
-                                   HttpSession session,
+                                   HttpSession httpSession,
                                    Model model) {
         // Validate driverId format (e.g., 6 digits) - Basic validation
         if (driverId == null || !driverId.matches("\\d{6}")) {
@@ -32,22 +43,51 @@ public class DriverController {
              return "driver_login"; // Return to login page with error
         }
 
-        // Store driver info in the session
-        session.setAttribute("driverName", driverName);
-        session.setAttribute("driverId", driverId);
+        // Save driver information if it doesn't exist
+        if (!driverRepository.existsById(driverId)) {
+            Driver driver = new Driver(driverId, driverName);
+            driverRepository.save(driver);
+        }
 
-        // Add driver name to the model for display on the monitoring page
+        // Start the session using the service
+        DriverSession driverSession = sessionService.startSession(driverId);
+
+        if (driverSession == null) {
+            // Handle error if session couldn't be started (e.g., invalid driverId was somehow passed)
+            model.addAttribute("error", "Could not start monitoring session.");
+            return "driver_login";
+        }
+
+        // Store driver info and session ID in the HTTP session
+        httpSession.setAttribute("driverName", driverName);
+        httpSession.setAttribute("driverId", driverId);
+        httpSession.setAttribute("sessionId", driverSession.getSessionId()); // Store session ID
+
+        // Add data to the model for the monitoring page
         model.addAttribute("driverName", driverName);
-        model.addAttribute("driverId", driverId); // Also pass driverId
+        model.addAttribute("driverId", driverId);
+        model.addAttribute("sessionId", driverSession.getSessionId()); // Pass session ID to the view
 
         // Returns the view name for the driver monitoring page
         return "driver_monitoring";
     }
 
     @GetMapping("/driver/exit")
-    public String exitSession(HttpSession session) {
-        // Invalidate the session to log the driver out
-        session.invalidate();
+    public String exitSession(HttpSession httpSession) { // Renamed to avoid conflict
+        // Get driverId from the session before invalidating
+        String driverId = (String) httpSession.getAttribute("driverId");
+
+        if (driverId != null) {
+            // End the session using the service
+            sessionService.endSession(driverId);
+        } else {
+            // Log a warning if driverId wasn't found in session
+            // Consider adding a logger instance to the class
+            System.err.println("Warning: driverId not found in session during exit.");
+        }
+
+        // Invalidate the HTTP session to log the driver out
+        httpSession.invalidate();
         // Redirect back to the login page
         return "redirect:/driver/login";
     }

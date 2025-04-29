@@ -36,6 +36,13 @@ dependencies {
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     
+    // Jackson для обработки JSON
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2' // Use a specific, recent version
+
+    // Logging - Managed by Spring Boot Starter Logging (included via web starter)
+    // implementation 'org.slf4j:slf4j-api:2.0.5' // Remove explicit version
+    // implementation 'ch.qos.logback:logback-classic:1.4.6' // Remove explicit version
+    
     // Разработка и тестирование
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'

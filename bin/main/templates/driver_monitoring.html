@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <title>Driver Monitoring</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Подключение библиотек MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     <style>
         /* Basic styling for video and notification */
         #videoContainer {
@@ -24,23 +28,81 @@
             z-index: 1000;
             min-width: 150px; /* Ensure alert is visible */
         }
+
+        /* Styles from TASK_05 */
+        .video-container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        #videoElement {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #outputCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+
+        #notificationArea {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            z-index: 10;
+            min-width: 150px; /* Ensure alert is visible */
+        }
+
+        .status-indicator {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            padding: 5px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
 <div class="container mt-3">
     <h2 th:text="'Monitoring Driver: ' + ${driverName} + ' (ID: ' + ${driverId} + ')'">Monitoring Driver</h2>
 
-    <!-- Notification Area -->
-    <div id="notificationArea">
-        <!-- Notifications will be injected here by JavaScript -->
-        <div class="alert alert-secondary" role="alert">
-            Status: Initializing...
-        </div>
-    </div>
+    <!-- Hidden fields for driverId and sessionId -->
+    <input type="hidden" id="driverId" th:value="${driverId}">
+    <input type="hidden" id="sessionId" th:value="${sessionId}">
 
-    <!-- Video Feed Area -->
-    <div id="videoContainer">
+    <!-- Video Feed Area with Canvas -->
+    <div class="video-container" id="videoContainer">
         <video id="videoElement" autoplay playsinline></video>
+        <canvas id="outputCanvas" width="640" height="480"></canvas>
+        <!-- Notification Area -->
+        <div id="notificationArea">
+            <!-- Notifications will be injected here by JavaScript -->
+            <div class="alert alert-secondary" role="alert">
+                Status: Initializing...
+            </div>
+        </div>
+        <!-- Status Indicator -->
+        <div id="statusIndicator" class="status-indicator bg-success text-white">
+            Status: Normal
+        </div>
     </div>
 
     <!-- Exit Button -->
@@ -51,80 +113,323 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // --- JavaScript for Camera Access and Notifications ---
+    // --- JavaScript for MediaPipe Face Mesh and Notifications ---
 
-    const videoElement = document.getElementById('videoElement');
+    // Настройки и пороговые значения
+    const EAR_THRESHOLD = 0.2;     // Порог для определения закрытого глаза
+    const DROWSY_TIME = 2000;      // 2 секунды для определения сонливости
+    const FACE_MESH_CONFIG = {
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    };
+
+    // Состояние
+    let lastEyeCloseTime = null;
+    let currentState = 'NORMAL';
+    let faceMesh;
+    let camera;
+
+    // Получаем элементы DOM
+    const video = document.getElementById('videoElement');
+    const canvas = document.getElementById('outputCanvas');
+    const ctx = canvas.getContext('2d');
+    const driverId = document.getElementById('driverId').value;
+    const sessionId = document.getElementById('sessionId').value;
     const notificationArea = document.getElementById('notificationArea');
-    let currentDriverState = null; // To track the current state and avoid redundant updates
+    const statusIndicator = document.getElementById('statusIndicator');
 
-    // Function to show notifications based on driver state
-    function showNotification(state) {
-        if (state === currentDriverState) {
-            return; // No change, do nothing
+    // Инициализация FaceMesh
+    function setupFaceMesh() {
+        if (!checkBrowserSupport()) return; // Проверка поддержки браузером
+
+        faceMesh = new FaceMesh({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+        }});
+
+        faceMesh.setOptions(FACE_MESH_CONFIG);
+
+        faceMesh.onResults(onResults);
+
+        // Запускаем камеру
+        camera = new Camera(video, {
+            onFrame: async () => {
+                try {
+                    await faceMesh.send({image: video});
+                } catch (error) {
+                    console.error('MediaPipe FaceMesh Error:', error);
+                }
+            },
+            width: 640,
+            height: 480
+        });
+
+        camera.start().catch(err => {
+            console.error("Ошибка запуска камеры:", err);
+            notificationArea.innerHTML = `
+                <div class="alert alert-danger">
+                    Не удалось получить доступ к камере. Проверьте разрешения браузера.
+                </div>`;
+        });
+    }
+
+    // Обработка результатов FaceMesh
+    function onResults(results) {
+        // Очищаем канвас
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Рисуем изображение с камеры
+        ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+            // Лицо обнаружено
+            const landmarks = results.multiFaceLandmarks[0];
+
+            // Отрисовываем ключевые точки лица (опционально)
+            // drawConnectors(ctx, landmarks, FACEMESH_TESSELATION,
+            //                {color: '#C0C0C070', lineWidth: 1});
+
+            // Рассчитываем EAR для определения сонливости
+            const leftEAR = calculateEAR(landmarks, LEFT_EYE_INDICES);
+            const rightEAR = calculateEAR(landmarks, RIGHT_EYE_INDICES);
+            const avgEAR = (leftEAR + rightEAR) / 2;
+
+            // Проверяем, закрыты ли глаза
+            if (avgEAR < EAR_THRESHOLD) {
+                // Глаза закрыты
+                if (lastEyeCloseTime === null) {
+                    lastEyeCloseTime = Date.now();
+                } else {
+                    const closeDuration = Date.now() - lastEyeCloseTime;
+
+                    // Проверяем продолжительность закрытия глаз
+                    if (closeDuration > DROWSY_TIME) {
+                        // Водитель сонный, если глаза закрыты больше порогового времени
+                        updateDriverState('DROWSY', closeDuration / 1000, {
+                            earValue: avgEAR,
+                            closeDuration: closeDuration,
+                            leftEAR: leftEAR,
+                            rightEAR: rightEAR
+                        });
+                    }
+                }
+            } else {
+                // Глаза открыты
+                lastEyeCloseTime = null;
+
+                // Если предыдущее состояние было не NORMAL, обновляем на NORMAL
+                if (currentState !== 'NORMAL') {
+                    updateDriverState('NORMAL', 0, {});
+                }
+            }
+        } else {
+            // Лицо не обнаружено - водитель отвлечен
+            updateDriverState('DISTRACTED', 1.0, {
+                faceDetected: false,
+                timestamp: Date.now()
+            });
         }
-        currentDriverState = state;
+    }
 
-        let alertClass = 'alert-secondary';
-        let message = 'Status: Unknown';
+    // Рассчитывает Eye Aspect Ratio для определения закрытости глаз
+    function calculateEAR(landmarks, eyeIndices) {
+        // Получаем координаты ключевых точек глаза
+        const eyePoints = eyeIndices.map(index => landmarks[index]);
 
-        switch (state) {
-            case 'NORMAL':
-                alertClass = 'alert-success';
-                message = 'Status: Normal';
+        // Вертикальные расстояния
+        const height1 = distance(eyePoints[1], eyePoints[5]);
+        const height2 = distance(eyePoints[2], eyePoints[4]);
+
+        // Горизонтальное расстояние
+        const width = distance(eyePoints[0], eyePoints[3]);
+
+        // Рассчитываем EAR
+        return (height1 + height2) / (2 * width);
+    }
+
+    // Евклидово расстояние между двумя точками
+    function distance(p1, p2) {
+        if (!p1 || !p2) return 0; // Handle cases where landmarks might be missing
+        return Math.sqrt(
+            Math.pow(p2.x - p1.x, 2) +
+            Math.pow(p2.y - p1.y, 2)
+        );
+    }
+
+    // Обновляет состояние водителя и отправляет данные на сервер
+    function updateDriverState(state, duration, metadata) {
+        // Обновляем только при изменении состояния
+        if (currentState !== state) {
+            currentState = state;
+
+            // Обновляем UI
+            updateUI(state);
+
+            // Если состояние не NORMAL, отправляем событие на сервер
+            if (state !== 'NORMAL') {
+                sendEventToServer(state, duration, metadata);
+            }
+        }
+    }
+
+    // Отправляет событие на сервер для логирования
+    function sendEventToServer(state, duration, metadata) {
+        console.log(`Attempting to send event: State=${state}, Duration=${duration}, DriverID=${driverId}, SessionID=${sessionId}`); // Add log
+        const payload = {
+            driverId: driverId,
+            sessionId: sessionId, // Send sessionId
+            state: state,
+            duration: duration,
+            metadata: {
+                ...metadata,
+                timestamp: Date.now()
+            }
+        };
+        console.log('Payload:', JSON.stringify(payload)); // Add log for payload
+
+        fetch('/api/detection-event', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            console.log(`Server response status: ${response.status}`); // Add log for response status
+            if (!response.ok) {
+                console.error('Server returned error:', response.statusText);
+            }
+            return response.text(); // Read body even if just for logging
+        })
+        .then(text => {
+             console.log('Server response body:', text); // Log response body
+        })
+        .catch(error => console.error('Error sending event:', error));
+    }
+
+    // Индексы ключевых точек для глаз в MediaPipe Face Mesh
+    // Левый глаз: точки 362, 385, 387, 263, 373, 380
+    // Правый глаз: точки 33, 160, 158, 133, 153, 144
+    const LEFT_EYE_INDICES = [362, 385, 387, 263, 373, 380];  // Внешние точки левого глаза
+    const RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144];  // Внешние точки правого глаза
+
+    // Обновляет UI на основе состояния водителя
+    function updateUI(state) {
+        switch(state) {
+            case 'DROWSY':
+                showDrowsyNotification();
                 break;
             case 'DISTRACTED':
-                alertClass = 'alert-warning';
-                message = 'Warning: Distracted!';
+                showDistractedNotification();
                 break;
-            case 'DROWSY':
-                alertClass = 'alert-danger';
-                message = 'Warning: Drowsy!';
+            case 'NORMAL':
+            default:
+                showNormalNotification();
                 break;
         }
+    }
 
+    // Показывает уведомление о нормальном состоянии
+    function showNormalNotification() {
         notificationArea.innerHTML = `
-            <div class="alert ${alertClass}" role="alert">
-                ${message}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <strong>Status:</strong> Normal
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>`;
+
+        statusIndicator.className = 'status-indicator bg-success text-white';
+        statusIndicator.textContent = 'Status: Normal';
     }
 
-    // Function to start the camera
-    async function startCamera() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { width: 640, height: 480 }, // Request specific resolution
-                audio: false
-            });
-            videoElement.srcObject = stream;
-            showNotification('NORMAL'); // Assume normal state initially
+    // Показывает уведомление о отвлечении
+    function showDistractedNotification() {
+        notificationArea.innerHTML = `
+            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                <strong>Warning:</strong> Eyes on the road! You appear distracted.
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>`;
 
-            // Placeholder for starting frame analysis (from TASK_05)
-            // setInterval(analyzeFrame, 1000); // Analyze frame every second
+        statusIndicator.className = 'status-indicator bg-warning text-dark';
+        statusIndicator.textContent = 'Status: Distracted';
 
-        } catch (err) {
-            console.error("Error accessing camera: ", err);
+        // Воспроизводим звук уведомления (если звуки настроены)
+        // playAlertSound('distracted'); // Uncomment if sound files are available
+    }
+
+    // Показывает уведомление о сонливости
+    function showDrowsyNotification() {
+        notificationArea.innerHTML = `
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <strong>Warning:</strong> You appear drowsy! Consider taking a break.
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>`;
+
+        statusIndicator.className = 'status-indicator bg-danger text-white';
+        statusIndicator.textContent = 'Status: Drowsy';
+
+        // Воспроизводим звук уведомления (если звуки настроены)
+        // playAlertSound('drowsy'); // Uncomment if sound files are available
+    }
+
+    // Воспроизводит звук уведомления (Placeholder - requires sound files)
+    function playAlertSound(type) {
+        console.log(`Playing sound for: ${type}`); // Placeholder
+        // try {
+        //     const sound = type === 'drowsy' ? 'drowsy_alert.mp3' : 'distracted_alert.mp3';
+        //     const audio = new Audio('/sounds/' + sound); // Assumes a /sounds directory
+        //     audio.volume = 0.7;
+        //     audio.play().catch(e => console.log('Could not play alert sound:', e));
+        // } catch(e) {
+        //     console.log('Sound playback not supported');
+        // }
+    }
+
+    // Проверка поддержки браузером
+    function checkBrowserSupport() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             notificationArea.innerHTML = `
-                <div class="alert alert-danger" role="alert">
-                    Error: Could not access camera. Please check permissions.
+                <div class="alert alert-danger">
+                    Ваш браузер не поддерживает доступ к камере.
+                    Пожалуйста, используйте Chrome, Firefox или Edge.
                 </div>`;
+            return false;
         }
+        // Check for MediaPipe compatibility (basic check)
+        if (typeof FaceMesh === 'undefined') {
+             notificationArea.innerHTML = `
+                <div class="alert alert-danger">
+                    Не удалось загрузить библиотеку MediaPipe FaceMesh.
+                    Проверьте подключение к интернету.
+                </div>`;
+            return false;
+        }
+        return true;
     }
 
-    // Placeholder for frame analysis function (to be implemented in TASK_05)
-    // function analyzeFrame() {
-    //     // 1. Capture frame from videoElement
-    //     // 2. Send frame to backend or process in JS (depending on TASK_05 implementation)
-    //     // 3. Get driver state (NORMAL, DISTRACTED, DROWSY)
-    //     // 4. Call showNotification(newState);
-    //     console.log('Analyzing frame...');
-    //     // Example: Simulate state change
-    //     // const states = ['NORMAL', 'DISTRACTED', 'DROWSY'];
-    //     // const randomState = states[Math.floor(Math.random() * states.length)];
-    //     // showNotification(randomState);
-    // }
+    // Оптимизация производительности: остановка/запуск камеры при смене видимости вкладки
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            // Страница скрыта - приостанавливаем обработку
+            if (camera) camera.stop();
+            console.log("Camera stopped due to page visibility change.");
+        } else {
+            // Страница активна - возобновляем обработку
+            if (camera) {
+                 camera.start().catch(err => {
+                    console.error("Ошибка перезапуска камеры:", err);
+                    notificationArea.innerHTML = `
+                        <div class="alert alert-danger">
+                            Не удалось перезапустить камеру после смены вкладки.
+                        </div>`;
+                });
+                console.log("Camera restarted after page visibility change.");
+            }
+        }
+    });
 
-    // Start the camera when the page loads
-    window.onload = startCamera;
+    // Запуск системы при загрузке страницы
+    document.addEventListener('DOMContentLoaded', setupFaceMesh);
 
 </script>
 </body>

@@ -39,7 +39,7 @@
                 <tr th:each="event : ${events}">
                     <td th:text="${#temporals.format(event.startTime, 'yyyy-MM-dd HH:mm:ss')}">Timestamp</td>
                     <td th:text="${event.eventType}">Event Type</td>
-                    <td th:text="${event.durationSeconds}">Duration</td>
+                    <td th:text="${event.duration}">Duration</td>
                 </tr>
                 <tr th:if="${#lists.isEmpty(events)}">
                     <td colspan="3" class="text-center">No events recorded for this driver.</td>

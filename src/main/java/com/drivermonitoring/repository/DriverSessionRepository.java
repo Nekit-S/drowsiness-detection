@@ -23,6 +23,9 @@ public interface DriverSessionRepository extends JpaRepository<DriverSession, Lo
     // Find multiple active sessions for a driver (for error checking)
     List<DriverSession> findAllByDriverIdAndActiveTrue(String driverId);
     
+    // Find all active sessions
+    List<DriverSession> findByActiveTrue();
+    
     // Find stale active sessions (for cleanup)
     List<DriverSession> findByActiveTrueAndStartTimeBefore(LocalDateTime threshold);
     

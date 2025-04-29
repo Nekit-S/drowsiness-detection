@@ -132,3 +132,11 @@ INSERT INTO DRIVERS (driver_id, name) VALUES ('D002', 'Jane Smith') [42122-232]
 	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:658)
 	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:63)
 	at java.base/java.lang.Thread.run(Thread.java:842)
+2025-04-30 00:49:57.778916+05:00 jdbc[8]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Таблица "DRIVER_SESSION" не найдена
+Table "DRIVER_SESSION" not found; SQL statement:
+SELECT * FROM DRIVER_SESSION [42102-232]
+2025-04-30 00:49:57.785622+05:00 jdbc[8]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Таблица "EVENT" не найдена
+Table "EVENT" not found; SQL statement:
+SELECT * FROM EVENT [42102-232]
