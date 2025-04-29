@@ -1,0 +1,141 @@
+# TASK_03_Create_Driver_Screen.txt
+
+# Task Title
+Create Driver Screen: Login, Start Monitoring, Show Video and Notifications
+
+---
+
+# Goal
+Develop the front-end screen for the driver:
+- Allow entering the driver's name and ID.
+- Start the face and eye detection after login.
+- Display video stream with detection overlay.
+- Show simple notifications when driver is distracted or drowsy.
+- Add button to exit driver session.
+
+---
+
+# Why This Task Is Important
+- This is the main entry point for the system.
+- Monitoring should not start until the driver identifies themselves.
+- Real-time feedback to the driver is essential for trust and transparency.
+
+---
+
+# Prerequisites
+Before starting this task:
+- Complete `TASK_02_Create_Entities_and_Repositories.txt`.
+- Review `CODING_STANDARDS.txt`.
+- Review `Knowledge/face_detection_knowledge.txt`.
+
+---
+
+# Detailed Instructions
+
+## Step 1: Create Login Page (Driver Login Form)
+- File: `src/main/resources/templates/driver_login.html`
+
+Content:
+- Input field for Name.
+- Input field for 6-digit Driver ID.
+- Submit button.
+
+Upon submit:
+- Save name and ID to the session.
+- Redirect to Driver Monitoring Page.
+
+## Step 2: Create Driver Monitoring Page
+- File: `src/main/resources/templates/driver_monitoring.html`
+
+Content:
+- Display video feed (camera input).
+- Real-time status notification:
+  - Normal (green)
+  - Distracted (yellow)
+  - Drowsy (red)
+- Button: **Exit Session** (stop monitoring and go back to login page).
+
+**Important:**
+Start detection **only after** the driver enters valid Name and ID.
+
+## Step 3: Create Driver Controller
+- File: `src/main/java/com/driver_monitoring/controller/DriverController.java`
+
+```java
+// What is this file?
+// This controller handles the Driver screen: login form, monitoring start, and session exit.
+// Why is this needed?
+// It manages the frontend views and connects driver actions to the backend services.
+
+package com.driver_monitoring.controller;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import jakarta.servlet.http.HttpSession;
+
+@Controller
+public class DriverController {
+
+    @GetMapping("/driver/login")
+    public String driverLogin() {
+        return "driver_login";
+    }
+
+    @PostMapping("/driver/start")
+    public String startMonitoring(@RequestParam String driverName,
+                                   @RequestParam String driverId,
+                                   HttpSession session,
+                                   Model model) {
+        session.setAttribute("driverName", driverName);
+        session.setAttribute("driverId", driverId);
+        model.addAttribute("driverName", driverName);
+        return "driver_monitoring";
+    }
+
+    @GetMapping("/driver/exit")
+    public String exitSession(HttpSession session) {
+        session.invalidate();
+        return "redirect:/driver/login";
+    }
+}
+```
+
+## Step 4: Implement Frontend Camera and Notifications (JS)
+- Use simple JavaScript to:
+  - Access webcam using `navigator.mediaDevices.getUserMedia()`.
+  - Display video stream inside a `<video>` element.
+  - Show Bootstrap alerts for driver state (Normal/Distracted/Drowsy).
+
+**Reference:** Example snippets in `Knowledge/face_detection_knowledge.txt`
+
+---
+
+# Coding Standards
+You must follow all rules defined in `CODING_STANDARDS.txt`:
+- Simple and clear controllers.
+- Proper comments at the top of each file.
+- Proper HTML structure (Bootstrap classes).
+
+---
+
+# Success Criteria
+- Login page loads and accepts Name + 6-digit ID.
+- After login, video stream starts automatically.
+- Notifications are shown on driver state change.
+- Exit button correctly stops monitoring and redirects.
+- Code is simple, clean, and properly commented.
+
+---
+
+# References
+- [Spring Boot MVC Basics](https://spring.io/guides/gs/serving-web-content/)
+- [MDN: MediaDevices.getUserMedia()](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
+- Knowledge about face detection ➔ `Knowledge/face_detection_knowledge.txt`
+
+---
+
+# End of TASK_03_Create_Driver_Screen.txt
+

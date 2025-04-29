@@ -1,0 +1,101 @@
+# Knowledge: face_detection_knowledge.txt
+
+# Purpose
+This knowledge file explains how to perform face and eye detection for the Driver Monitoring System using OpenCV via JavaCV.
+It provides the required minimum background and simple examples for implementation.
+
+---
+
+# Technologies Used
+- JavaCV (wrapper for OpenCV)
+- Haar Cascade Classifiers
+- Basic Image Processing
+
+---
+
+# Detection Strategy
+
+## 1. Face Detection
+- Use OpenCV's pre-trained Haar Cascade model for face detection.
+- Use the model file `haarcascade_frontalface_default.xml`.
+
+**Steps:**
+- Convert video frame to grayscale.
+- Apply face detection.
+- If no face is detected, treat driver as **DISTRACTED**.
+
+## 2. Eye Detection
+- After detecting face, search for eyes inside the detected face region.
+- Use the model file `haarcascade_eye_tree_eyeglasses.xml`.
+
+**Steps:**
+- Detect eyes.
+- Calculate Eye Aspect Ratio (EAR) if using keypoints.
+- Alternatively, detect if eyes disappear (no detection) = potential closed eyes.
+
+## 3. Simple Drowsiness Detection Rule
+- If eyes are **not detected for more than 2 seconds**, assume driver is **DROWSY**.
+
+## 4. Processing Interval
+- Analyze frames once per **1 second** to reduce CPU load.
+- Do not process every frame at full FPS (inefficient).
+
+---
+
+# JavaCV Usage Hints
+
+## Loading Haar Cascade Classifier
+```java
+CascadeClassifier faceDetector = new CascadeClassifier("path_to_haarcascade_frontalface_default.xml");
+CascadeClassifier eyeDetector = new CascadeClassifier("path_to_haarcascade_eye_tree_eyeglasses.xml");
+```
+
+## Detecting Objects
+```java
+Mat grayFrame = new Mat();
+cvtColor(originalFrame, grayFrame, COLOR_BGR2GRAY);
+RectVector faces = new RectVector();
+faceDetector.detectMultiScale(grayFrame, faces);
+```
+
+If `faces.size() == 0`, the driver is distracted.
+
+For each detected face region:
+```java
+Rect faceRect = faces.get(0);
+Mat faceROI = new Mat(grayFrame, faceRect);
+RectVector eyes = new RectVector();
+eyeDetector.detectMultiScale(faceROI, eyes);
+```
+
+If `eyes.size() == 0` over 2 seconds, the driver is drowsy.
+
+---
+
+# Important Notes
+- Always release Mat resources to avoid memory leaks.
+- Haar Cascades are fast but not 100% accurate; simple rules are acceptable for MVP.
+- If models are missing, download from OpenCV GitHub or official distribution.
+
+---
+
+# File Resources (Recommended)
+- [Haar Cascade for Face](https://github.com/opencv/opencv/blob/master/data/haarcascades/haarcascade_frontalface_default.xml)
+- [Haar Cascade for Eyes](https://github.com/opencv/opencv/blob/master/data/haarcascades/haarcascade_eye_tree_eyeglasses.xml)
+
+---
+
+# Summary
+- Use Haar Cascades for face and eye detection.
+- Classify states based on detection results:
+  - Face missing ➔ Distracted
+  - Eyes missing > 2 seconds ➔ Drowsy
+  - Otherwise ➔ Normal
+- Analyze one frame per second.
+
+This keeps CPU usage low and is simple enough for early prototypes.
+
+---
+
+# End of face_detection_knowledge.txt
+

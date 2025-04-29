@@ -1,0 +1,114 @@
+# TASK_07_Notification_System.txt
+
+# Task Title
+Implement Driver Notification System: Show Alerts Based on Driver State
+
+---
+
+# Goal
+Develop a frontend notification system that:
+- Shows a visual alert when the driver becomes distracted or drowsy.
+- Changes the visual appearance based on the current state.
+- Helps the driver immediately realize their condition.
+
+---
+
+# Why This Task Is Important
+- Immediate feedback can prevent accidents.
+- Simple alerts reinforce the importance of maintaining attention.
+- Critical part of human-centered design.
+
+---
+
+# Prerequisites
+Before starting this task:
+- Complete `TASK_06_Event_Logging_Service.txt`.
+- Review `CODING_STANDARDS.txt`.
+- Understand basic Bootstrap alerts.
+
+---
+
+# Detailed Instructions
+
+## Step 1: Update Driver Monitoring Page HTML
+- File: `src/main/resources/templates/driver_monitoring.html`
+
+Add:
+- A placeholder `<div>` element with an ID `notificationArea` where alerts will be shown.
+- Example:
+
+```html
+<div id="notificationArea" style="position: absolute; top: 10px; left: 10px; z-index: 1000;"></div>
+```
+
+## Step 2: Create Notification Functions (JS)
+In the same page (`driver_monitoring.html`), inside a `<script>` tag:
+
+Add JavaScript functions to display alerts:
+
+```javascript
+function showNormalNotification() {
+    document.getElementById('notificationArea').innerHTML = `
+        <div class="alert alert-success" role="alert">
+            Status: Normal
+        </div>`;
+}
+
+function showDistractedNotification() {
+    document.getElementById('notificationArea').innerHTML = `
+        <div class="alert alert-warning" role="alert">
+            Warning: Distracted!
+        </div>`;
+}
+
+function showDrowsyNotification() {
+    document.getElementById('notificationArea').innerHTML = `
+        <div class="alert alert-danger" role="alert">
+            Warning: Drowsy!
+        </div>`;
+}
+```
+
+## Step 3: Connect Notifications to Driver State
+When analyzing frames in JavaScript (see `Knowledge/face_detection_knowledge.txt`):
+- Based on detected state, call:
+  - `showNormalNotification()` for NORMAL
+  - `showDistractedNotification()` for DISTRACTED
+  - `showDrowsyNotification()` for DROWSY
+
+This should happen every second after processing each frame.
+
+**Important:** If no driver state changes occur, do not unnecessarily reload the same notification.
+
+---
+
+# Important Details
+- Use simple Bootstrap alert classes: `alert-success`, `alert-warning`, `alert-danger`.
+- Notifications must be lightweight — avoid animations or complex UI.
+- Always clear the previous alert before showing a new one (overwrite the `notificationArea` div).
+
+---
+
+# Coding Standards
+You must follow all rules defined in `CODING_STANDARDS.txt`:
+- Simple and clean JS functions.
+- Proper code comments explaining each function's purpose.
+
+---
+
+# Success Criteria
+- Correct alert is shown within 1 second after the driver’s state changes.
+- Notification color matches driver state.
+- No error messages in browser console.
+- Code is simple, clean, and properly commented.
+
+---
+
+# References
+- [Bootstrap Alerts](https://getbootstrap.com/docs/5.0/components/alerts/)
+- Knowledge about state transitions ➔ `Knowledge/face_detection_knowledge.txt`
+
+---
+
+# End of TASK_07_Notification_System.txt
+

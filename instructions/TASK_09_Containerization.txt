@@ -1,0 +1,127 @@
+# TASK_09_Containerization.txt
+
+# Task Title
+Finalize Containerization: Dockerfile and Docker-Compose
+
+---
+
+# Goal
+Prepare a fully working Docker setup so that the entire application can be built and run with one simple command.
+
+---
+
+# Why This Task Is Important
+- Ensures consistent environment across development and production.
+- Simplifies deployment and demonstration.
+- Helps avoid "works on my machine" problems.
+
+---
+
+# Prerequisites
+Before starting this task:
+- Complete `TASK_08_Unit_Tests.txt`.
+- Review `CODING_STANDARDS.txt`.
+- Understand basic Docker concepts.
+
+---
+
+# Detailed Instructions
+
+## Step 1: Create Dockerfile
+- File: `Dockerfile`
+
+If not already present, create or update as:
+
+```dockerfile
+# Use Java 17 base image
+FROM eclipse-temurin:17-jdk-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Copy project files
+COPY gradlew .
+COPY gradle gradle
+COPY build.gradle .
+COPY settings.gradle .
+COPY src src
+
+# Give permission to Gradle wrapper
+RUN chmod +x ./gradlew
+
+# Build the application
+RUN ./gradlew bootJar
+
+# Run the application
+ENTRYPOINT ["java", "-jar", "build/libs/driver-monitoring-0.0.1-SNAPSHOT.jar"]
+```
+
+## Step 2: Create docker-compose.yml
+- File: `docker-compose.yml`
+
+```yaml
+version: '3.8'
+
+services:
+  driver-monitoring-app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    volumes:
+      - ./logs:/logs
+```
+
+**Explanation:**
+- Builds image from local Dockerfile.
+- Exposes port 8080.
+- Sets an active profile to "docker".
+- Maps a local "logs" directory.
+
+## Step 3: Create logs Directory
+- At project root, create a `logs/` folder (empty initially).
+- This is used to store logs outside of the container.
+
+## Step 4: Build and Run
+From project root:
+```bash
+docker-compose up --build
+```
+
+Check:
+- Spring Boot app starts without errors.
+- Accessible at `http://localhost:8080/`.
+
+---
+
+# Important Details
+- Ensure the Dockerfile builds the app without needing local Gradle installed.
+- All dependencies must be included inside the Docker image.
+- Keep Dockerfile clean and minimal.
+
+---
+
+# Coding Standards
+You must follow all rules defined in `CODING_STANDARDS.txt`:
+- Add a comment at the top of Dockerfile and docker-compose.yml explaining "What is this and why".
+- Clear, clean, minimal Docker syntax.
+
+---
+
+# Success Criteria
+- `docker-compose up --build` successfully builds and runs the project.
+- Application is accessible on localhost:8080.
+- No manual environment setup required outside the project folder.
+- Code is simple, clean, and properly commented.
+
+---
+
+# References
+- [Dockerfile Reference](https://docs.docker.com/engine/reference/builder/)
+- [Docker Compose Basics](https://docs.docker.com/compose/)
+
+---
+
+# End of TASK_09_Containerization.txt
+
