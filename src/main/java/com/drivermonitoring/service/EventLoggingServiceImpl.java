@@ -105,38 +105,56 @@ public class EventLoggingServiceImpl implements EventLoggingService {
             // Ensure metadata is not null and create a mutable copy
             Map<String, Object> safeMetadata = (metadata != null) ? new HashMap<>(metadata) : new HashMap<>();
 
+            // Извлекаем ключевые признаки для отдельных полей
+            Float earValue = safeMetadata.containsKey("earValue") ? parseFloatSafe(safeMetadata.get("earValue")) : null;
+            Float leftEar = safeMetadata.containsKey("leftEar") ? parseFloatSafe(safeMetadata.get("leftEar")) : null;
+            Float rightEar = safeMetadata.containsKey("rightEar") ? parseFloatSafe(safeMetadata.get("rightEar")) : null;
+            String headDirection = safeMetadata.containsKey("headDirection") ? String.valueOf(safeMetadata.get("headDirection")) : null;
+            Boolean faceDetected = safeMetadata.containsKey("faceDetected") ? parseBooleanSafe(safeMetadata.get("faceDetected")) : null;
+            String featureSource = safeMetadata.containsKey("featureSource") ? String.valueOf(safeMetadata.get("featureSource")) : null;
+
+            // Удаляем эти признаки из JSON, чтобы не дублировать
+            safeMetadata.remove("earValue");
+            safeMetadata.remove("leftEar");
+            safeMetadata.remove("rightEar");
+            safeMetadata.remove("headDirection");
+            safeMetadata.remove("faceDetected");
+            safeMetadata.remove("featureSource");
+
             // Add timestamp if not present
             safeMetadata.putIfAbsent("timestamp", System.currentTimeMillis());
-
             // Add event context (can be useful for analysis)
             safeMetadata.putIfAbsent("sessionId", session.getSessionId());
             safeMetadata.putIfAbsent("eventType", driverState.name());
-            safeMetadata.putIfAbsent("source", "MediaPipe"); // Add event source as per task description
+            safeMetadata.putIfAbsent("source", "MediaPipe");
 
             // Convert metadata map to JSON string
             String metadataJson;
             try {
-                // Configure ObjectMapper to handle potential date/time formatting if needed
-                // objectMapper.registerModule(new JavaTimeModule());
-                // objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
                 metadataJson = objectMapper.writeValueAsString(safeMetadata);
             } catch (JsonProcessingException e) {
-                // If JSON conversion fails, log the error and use an empty JSON object
                 logger.error("Failed to convert metadata to JSON for driver {}: {}", driverId, e.getMessage());
                 metadataJson = "{}";
             }
 
+            // Создаем Event с новыми полями
             Event event = new Event(
                 session.getSessionId(),
                 driverId,
-                driverState.name(), // Use enum name as eventType string
+                driverState.name(),
                 duration,
                 metadataJson
             );
+            event.setEarValue(earValue);
+            event.setLeftEar(leftEar);
+            event.setRightEar(rightEar);
+            event.setHeadDirection(headDirection);
+            event.setFaceDetected(faceDetected);
+            event.setFeatureSource(featureSource);
 
             Event savedEvent = eventRepository.save(event);
             logger.info("Logged {} event with metadata from {} for driver {}, duration: {}s, session: {}",
-                    driverState, safeMetadata.getOrDefault("source", "unknown"), driverId, duration, session.getSessionId());
+                    driverState, featureSource != null ? featureSource : safeMetadata.getOrDefault("source", "unknown"), driverId, duration, session.getSessionId());
 
             return savedEvent;
         } catch (Exception e) {
@@ -183,30 +201,19 @@ public class EventLoggingServiceImpl implements EventLoggingService {
         }
     }
 
-    // Helper methods from task description (can be used internally or exposed if needed)
-    // These seem more like examples of how to create metadata *before* calling the service,
-    // rather than methods belonging *in* the service itself.
-    // Keeping them commented out for now as the main service methods handle metadata directly.
-
-    /*
-    // Helper method to build metadata for drowsy events from MediaPipe
-    public Map<String, Object> buildMediaPipeDrowsyEventMetadata(float earValue, float blinkRate, long closeDuration) {
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("earValue", earValue);
-        metadata.put("blinkRate", blinkRate);
-        metadata.put("closeDuration", closeDuration);
-        metadata.put("source", "MediaPipe");
-        metadata.put("timestamp", LocalDateTime.now().toString()); // Consider using epoch millis for consistency
-        return metadata;
+    // Вспомогательные методы для безопасного парсинга
+    private Float parseFloatSafe(Object value) {
+        if (value == null) return null;
+        try {
+            if (value instanceof Number) return ((Number) value).floatValue();
+            return Float.parseFloat(value.toString());
+        } catch (Exception e) {
+            return null;
+        }
     }
-
-    // Helper method to build metadata for distracted events from MediaPipe
-    public Map<String, Object> buildMediaPipeDistractedEventMetadata(boolean faceDetected) {
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("faceDetected", faceDetected);
-        metadata.put("source", "MediaPipe");
-        metadata.put("timestamp", LocalDateTime.now().toString()); // Consider using epoch millis for consistency
-        return metadata;
+    private Boolean parseBooleanSafe(Object value) {
+        if (value == null) return null;
+        if (value instanceof Boolean) return (Boolean) value;
+        return Boolean.parseBoolean(value.toString());
     }
-    */
 }

@@ -7,15 +7,30 @@
 </head>
 <body>
 <div class="container mt-4">
-    <h1>Dispatcher Panel</h1>
-    <h2>Select Driver to View Statistics</h2>
-    <div class="list-group">
-        <a th:each="driver : ${drivers}" 
-           th:href="@{/dispatcher/driver/{driverId}(driverId=${driver.driverId})}" 
-           class="list-group-item list-group-item-action">
-            <span th:text="${driver.driverName}">Driver Name</span> (<span th:text="${driver.driverId}">Driver ID</span>)
-        </a>
+        <h1>Dispatcher Panel</h1>
+        <h2>Select Driver to View Statistics</h2>
+        <table class="table table-bordered table-hover">
+            <thead class="thead-light">
+                <tr>
+                    <th>Имя</th>
+                    <th>ID</th>
+                    <th>Общая оценка</th>
+                    <th>Статистика</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="driver : ${driverInfos}">
+                    <td th:text="${driver.driverName}">Driver Name</td>
+                    <td th:text="${driver.driverId}">Driver ID</td>
+                    <td>
+                        <span class="text-success">Надёжный</span>
+                    </td>
+                    <td>
+                        <a th:href="@{/dispatcher/driver/{driverId}(driverId=${driver.driverId})}" class="btn btn-primary btn-sm">Статистика</a>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
     </div>
-</div>
 </body>
 </html>

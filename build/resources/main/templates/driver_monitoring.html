@@ -109,11 +109,31 @@
     <div class="mt-3 text-center">
         <a th:href="@{/driver/exit}" class="btn btn-danger">Exit Session</a>
     </div>
+
+    <!-- Блок рекомендаций для водителя -->
+    <div class="mt-4" id="driverRecommendationBox">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Рекомендация для водителя</h5>
+                <div id="driverRecommendationText" class="fw-bold text-center text-success">
+                    Всё в порядке. Продолжайте движение и следите за дорогой.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Переключатель режима анализа -->
+    <div class="mt-3 mb-2 text-center">
+        <span>Период анализа:</span>
+        <button id="demoModeBtn" class="btn btn-outline-primary btn-sm mx-1 active" onclick="setAnalysisPeriod(1)">Демо (1 мин)</button>
+        <button id="realModeBtn" class="btn btn-outline-secondary btn-sm mx-1" onclick="setAnalysisPeriod(30)">Реальный (30 мин)</button>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     // --- JavaScript for MediaPipe Face Mesh and Notifications ---
+
 
     // Настройки и пороговые значения
     const EAR_THRESHOLD = 0.2;     // Порог для определения закрытого глаза
@@ -142,6 +162,15 @@
     const sessionId = document.getElementById('sessionId').value;
     const notificationArea = document.getElementById('notificationArea');
     const statusIndicator = document.getElementById('statusIndicator');
+
+    // === Переменная для периода анализа ===
+    let analysisPeriod = 1; // По умолчанию демо-режим (1 мин)
+    function setAnalysisPeriod(period) {
+        analysisPeriod = period;
+        // UI: выделить активную кнопку
+        document.getElementById('demoModeBtn').classList.toggle('active', period === 1);
+        document.getElementById('realModeBtn').classList.toggle('active', period === 30);
+    }
 
     // Инициализация FaceMesh
     function setupFaceMesh() {
@@ -411,6 +440,47 @@
     const LEFT_EYE_INDICES = [362, 385, 387, 263, 373, 380];  // Внешние точки левого глаза
     const RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144];  // Внешние точки правого глаза
 
+    // === Gaze direction detection ===
+    // Индексы для зрачка (iris) и центра глаз в MediaPipe
+    const LEFT_IRIS_INDEX = 474; // Центр левого зрачка
+    const RIGHT_IRIS_INDEX = 469; // Центр правого зрачка
+    function getLeftEyeCenter(landmarks) {
+        return {
+            x: (landmarks[362].x + landmarks[263].x) / 2,
+            y: (landmarks[362].y + landmarks[263].y) / 2
+        };
+    }
+    function getRightEyeCenter(landmarks) {
+        return {
+            x: (landmarks[33].x + landmarks[133].x) / 2,
+            y: (landmarks[33].y + landmarks[133].y) / 2
+        };
+    }
+    const GAZE_X_THRESHOLD = 0.04;
+    const GAZE_Y_THRESHOLD = 0.04;
+    function detectGazeDirection(landmarks) {
+        // Левый глаз
+        const leftIris = landmarks[LEFT_IRIS_INDEX];
+        const leftCenter = getLeftEyeCenter(landmarks);
+        // Правый глаз
+        const rightIris = landmarks[RIGHT_IRIS_INDEX];
+        const rightCenter = getRightEyeCenter(landmarks);
+        // Смещения
+        const dxL = leftIris.x - leftCenter.x;
+        const dyL = leftIris.y - leftCenter.y;
+        const dxR = rightIris.x - rightCenter.x;
+        const dyR = rightIris.y - rightCenter.y;
+        // Среднее по двум глазам
+        const dx = (dxL + dxR) / 2;
+        const dy = (dyL + dyR) / 2;
+        // Определяем направление
+        if (dx < -GAZE_X_THRESHOLD) return 'LEFT';
+        if (dx > GAZE_X_THRESHOLD) return 'RIGHT';
+        if (dy < -GAZE_Y_THRESHOLD) return 'UP';
+        if (dy > GAZE_Y_THRESHOLD) return 'DOWN';
+        return 'CENTER';
+    }
+
     // Обновляет UI на основе состояния водителя
     function updateUI(state) {
         switch(state) {
@@ -528,6 +598,108 @@
     // Запуск системы при загрузке страницы
     document.addEventListener('DOMContentLoaded', setupFaceMesh);
 
-</script>
+    // === Рекомендации для водителя в реальном времени ===
+    // Обновляем историю при смене рекомендации
+    function updateDriverRecommendationBox(prediction) {
+        const box = document.getElementById('driverRecommendationBox');
+        const text = document.getElementById('driverRecommendationText');
+        if (!prediction) {
+            text.textContent = 'Нет данных для прогноза.';
+            text.className = 'fw-bold text-center text-secondary';
+            return;
+        }
+        let color = 'text-success';
+        let msg = '';
+        switch (prediction.riskLevel) {
+            case 'LOW':
+                color = 'text-success';
+                msg = 'Всё в порядке. Продолжайте движение и следите за дорогой.';
+                break;
+            case 'MEDIUM':
+                color = 'text-warning';
+                msg = 'Водитель часто отвлекается';
+                break;
+            case 'HIGH':
+                color = 'text-danger';
+                msg = 'Водитель засыпает';
+                break;
+            default:
+                color = 'text-secondary';
+                msg = 'Нет данных для прогноза.';
+        }
+        text.textContent = msg;
+        text.className = 'fw-bold text-center ' + color;
+    }
+
+    // Периодически обновлять рекомендации (каждые 15 секунд)
+    function startDriverRecommendationPolling() {
+        const driverId = document.getElementById('driverId').value;
+        function poll() {
+            fetch(`/api/driver/${driverId}/prediction?period=${analysisPeriod}`)
+                .then(resp => resp.ok ? resp.json() : null)
+                .then(prediction => updateDriverRecommendationBox(prediction))
+                .catch(() => updateDriverRecommendationBox(null));
+            setTimeout(poll, 15000); // 15 секунд
+        }
+        poll();
+    }
+    document.addEventListener('DOMContentLoaded', startDriverRecommendationPolling);
+
+    // === Подсчёт морганий (исправленный, только одна версия) ===
+    let blinkTimestamps = [];
+    const BLINK_EAR_THRESHOLD = 0.20;
+    const BLINK_MIN_INTERVAL = 200;
+    let lastBlinkTime = 0;
+    let isBlinking = false;
+    const BLINK_RATE_ALERT = 15; // для теста можно уменьшить
+
+    function detectBlink(avgEAR) {
+        const now = Date.now();
+        if (avgEAR < BLINK_EAR_THRESHOLD) {
+            if (!isBlinking && (now - lastBlinkTime > BLINK_MIN_INTERVAL)) {
+                blinkTimestamps.push(now);
+                lastBlinkTime = now;
+                isBlinking = true;
+            }
+        } else {
+            isBlinking = false;
+        }
+        blinkTimestamps = blinkTimestamps.filter(ts => now - ts < 60000);
+    }
+
+    function getBlinkRate() {
+        return blinkTimestamps.length;
+    }
+
+    // В onResults после расчёта avgEAR:
+    // ...existing code...
+            detectBlink(avgEAR);
+            const blinkRate = getBlinkRate();
+            if (blinkRate > BLINK_RATE_ALERT) {
+                updateDriverState('DROWSY', 1, { blinkRate: blinkRate });
+            }
+
+            // === Gaze direction logic (DISABLED FOR DEMO) ===
+            // const gazeDirection = detectGazeDirection(landmarks);
+            // if (gazeDirection !== 'CENTER') {
+            //     if (lastGazeDirection === gazeDirection) {
+            //         if (!gazeDistractStart) gazeDistractStart = Date.now();
+            //         else if (Date.now() - gazeDistractStart > GAZE_DISTRACT_DURATION) {
+            //             updateDriverState('DISTRACTED', (Date.now() - gazeDistractStart) / 1000, {
+            //                 gazeDirection: gazeDirection,
+            //                 faceDetected: true,
+            //                 timestamp: Date.now()
+            //             });
+            //             gazeDistractStart = Date.now(); // сбрасываем для повторного срабатывания
+            //         }
+            //     } else {
+            //         lastGazeDirection = gazeDirection;
+            //         gazeDistractStart = Date.now();
+            //     }
+            // } else {
+            //     lastGazeDirection = 'CENTER';
+            //     gazeDistractStart = null;
+            // }
+    </script>
 </body>
 </html>

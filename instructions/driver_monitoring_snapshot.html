@@ -134,7 +134,6 @@
 <script>
     // --- JavaScript for MediaPipe Face Mesh and Notifications ---
 
-
     // Настройки и пороговые значения
     const EAR_THRESHOLD = 0.2;     // Порог для определения закрытого глаза
     const DROWSY_TIME = 2000;      // 2 секунды для определения сонливости
@@ -599,7 +598,6 @@
     document.addEventListener('DOMContentLoaded', setupFaceMesh);
 
     // === Рекомендации для водителя в реальном времени ===
-    // Обновляем историю при смене рекомендации
     function updateDriverRecommendationBox(prediction) {
         const box = document.getElementById('driverRecommendationBox');
         const text = document.getElementById('driverRecommendationText');
@@ -617,11 +615,11 @@
                 break;
             case 'MEDIUM':
                 color = 'text-warning';
-                msg = 'Водитель часто отвлекается';
+                msg = 'Внимание! Возможна усталость или частое отвлечение. Сконцентрируйтесь на дороге, при необходимости сделайте перерыв.';
                 break;
             case 'HIGH':
                 color = 'text-danger';
-                msg = 'Водитель засыпает';
+                msg = 'Высокий риск усталости! Рекомендуется остановиться и отдохнуть.';
                 break;
             default:
                 color = 'text-secondary';
@@ -645,25 +643,20 @@
     }
     document.addEventListener('DOMContentLoaded', startDriverRecommendationPolling);
 
-    // === Подсчёт морганий (исправленный, только одна версия) ===
+    // === Подсчёт морганий ===
     let blinkTimestamps = [];
-    const BLINK_EAR_THRESHOLD = 0.20;
-    const BLINK_MIN_INTERVAL = 200;
+    const BLINK_EAR_THRESHOLD = 0.21; // EAR ниже этого — моргание
+    const BLINK_MIN_INTERVAL = 150; // Минимальный интервал между морганиями (мс)
     let lastBlinkTime = 0;
-    let isBlinking = false;
-    const BLINK_RATE_ALERT = 15; // для теста можно уменьшить
+    const BLINK_RATE_ALERT = 24; // морганий в минуту — порог для тревоги
 
     function detectBlink(avgEAR) {
         const now = Date.now();
-        if (avgEAR < BLINK_EAR_THRESHOLD) {
-            if (!isBlinking && (now - lastBlinkTime > BLINK_MIN_INTERVAL)) {
-                blinkTimestamps.push(now);
-                lastBlinkTime = now;
-                isBlinking = true;
-            }
-        } else {
-            isBlinking = false;
+        if (avgEAR < BLINK_EAR_THRESHOLD && (now - lastBlinkTime > BLINK_MIN_INTERVAL)) {
+            blinkTimestamps.push(now);
+            lastBlinkTime = now;
         }
+        // Очищаем старые моргания (старше 1 мин)
         blinkTimestamps = blinkTimestamps.filter(ts => now - ts < 60000);
     }
 
@@ -674,8 +667,11 @@
     // В onResults после расчёта avgEAR:
     // ...existing code...
             detectBlink(avgEAR);
+            // ...existing code...
+            // Проверка частоты моргания
             const blinkRate = getBlinkRate();
             if (blinkRate > BLINK_RATE_ALERT) {
+                // Отправляем событие DROWSY с blinkRate
                 updateDriverState('DROWSY', 1, { blinkRate: blinkRate });
             }
 

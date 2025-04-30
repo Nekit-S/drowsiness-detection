@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Прогноз усталости водителя</title>
+    <style>
+        .risk-low { color: green; }
+        .risk-medium { color: orange; }
+        .risk-high { color: red; }
+        .prediction-box { border: 1px solid #ccc; border-radius: 8px; padding: 24px; margin: 32px auto; max-width: 500px; background: #f9f9f9; }
+        .recommendation { font-weight: bold; margin-top: 16px; }
+    </style>
+</head>
+<body>
+<div class="prediction-box">
+    <h2>Прогноз усталости для водителя <span th:text="${driverId}"></span></h2>
+    <p>Уровень риска:
+        <span th:switch="${prediction.riskLevel}">
+            <span th:case="'LOW'" class="risk-low">Низкий</span>
+            <span th:case="'MEDIUM'" class="risk-medium">Средний</span>
+            <span th:case="'HIGH'" class="risk-high">Высокий</span>
+        </span>
+    </p>
+    <p>Вероятность усталости: <b th:text="${#numbers.formatDecimal(prediction.probability * 100, 0, 1)} + '%'">0%</b></p>
+    <p>Время до высокого риска: <b th:text="${prediction.minutesUntilHigh}"></b> мин.</p>
+    <div class="recommendation" th:text="${prediction.recommendation}"></div>
+    <a th:href="@{'/dispatcher'}">Назад к списку водителей</a>
+</div>
+</body>
+</html>
