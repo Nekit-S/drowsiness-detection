@@ -21,7 +21,7 @@ public class MockAIFatiguePredictionModel implements PredictionModel {
     public FatiguePrediction predict(Map<String, Float> features) {
         float distractedTimeFraction = features.getOrDefault("distractedTimeFraction", 0f);
         float drowsyTimeFraction = features.getOrDefault("drowsyTimeFraction", 0f);
-        float blinkRate = features.getOrDefault("blinkRate", 0f) * 60f; // blinkRate хранится в мин-1
+        float blinkRate = features.getOrDefault("blinkRate", 0f); // blinkRate должен быть в мин^-1
 
         // Только три рекомендации
         if (drowsyTimeFraction > 0.1f || blinkRate > 24) {

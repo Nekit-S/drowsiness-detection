@@ -645,13 +645,13 @@
     }
     document.addEventListener('DOMContentLoaded', startDriverRecommendationPolling);
 
-    // === Подсчёт морганий (исправленный, только одна версия) ===
+    // === Подсчёт морганий (только одна версия, с фронтом) ===
     let blinkTimestamps = [];
-    const BLINK_EAR_THRESHOLD = 0.20;
-    const BLINK_MIN_INTERVAL = 200;
+    const BLINK_EAR_THRESHOLD = 0.21; // EAR ниже этого — моргание
+    const BLINK_MIN_INTERVAL = 150; // Минимальный интервал между морганиями (мс)
     let lastBlinkTime = 0;
     let isBlinking = false;
-    const BLINK_RATE_ALERT = 15; // для теста можно уменьшить
+    const BLINK_RATE_ALERT = 24; // морганий в минуту — порог для тревоги
 
     function detectBlink(avgEAR) {
         const now = Date.now();
@@ -672,7 +672,6 @@
     }
 
     // В onResults после расчёта avgEAR:
-    // ...existing code...
             detectBlink(avgEAR);
             const blinkRate = getBlinkRate();
             if (blinkRate > BLINK_RATE_ALERT) {
